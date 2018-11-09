@@ -12,6 +12,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @SpringBootApplication
 public class RediscmdApplication implements CommandLineRunner {
@@ -37,10 +38,32 @@ public class RediscmdApplication implements CommandLineRunner {
             commandInfo.cmd = line;
         } else {
             commandInfo.cmd = segs[0];
+            boolean quoted = false;
+            String quoteStr = "";
             for (int i = 1; i < segs.length; i++) {
-                if (!StringUtils.isEmpty(segs[i])) {
-                    commandInfo.args.add(segs[i]);
+                if (StringUtils.startsWithIgnoreCase(segs[i], "\"")) {
+                    if (StringUtils.endsWithIgnoreCase(segs[i], "\"")) {
+                        commandInfo.args.add(segs[i].substring(1, segs[i].length() - 1));
+                    } else {
+                        quoted = true;
+                        quoteStr = segs[i].substring(1);
+                    }
+                } else {
+                    if (quoted) {
+                        if (StringUtils.endsWithIgnoreCase(segs[i], "\"")) {
+                            quoted = false;
+                            quoteStr += " " + segs[i].substring(0, segs[i].length() - 1);
+                            commandInfo.args.add(quoteStr);
+                        } else {
+                            quoteStr += " " + segs[i];
+                        }
+                    } else {
+                        if (!StringUtils.isEmpty(segs[i])) {
+                            commandInfo.args.add(segs[i]);
+                        }
+                    }
                 }
+
             }
         }
         return commandInfo;
@@ -50,7 +73,7 @@ public class RediscmdApplication implements CommandLineRunner {
     public void run(String... args) throws Exception {
         LineReader reader = LineReaderBuilder.builder().build();
         while (true) {
-            String line  = reader.readLine("> ");
+            String line = reader.readLine("> ");
 
             CommandInfo commandInfo = parseCmd(line);
 
@@ -88,7 +111,8 @@ public class RediscmdApplication implements CommandLineRunner {
                         }
                         String key = commandInfo.args.get(0);
 
-                        System.out.printf("'%s'\n", redisTemplate.opsForValue().get(key));
+                        String value = redisTemplate.opsForValue().get(key);
+                        System.out.println(value == null ? "(nil)" : String.format("'%s'", value));
                         break;
                     }
 
@@ -137,7 +161,8 @@ public class RediscmdApplication implements CommandLineRunner {
                         String key = commandInfo.args.get(0);
                         String hkey = commandInfo.args.get(1);
 
-                        System.out.printf("'%s'\n", redisTemplate.opsForValue().get(key));
+                        Object value = redisTemplate.opsForHash().get(key, hkey);
+                        System.out.println(value == null ? "(nil)" : String.format("'%s'", value));
                         break;
                     }
 
@@ -151,6 +176,106 @@ public class RediscmdApplication implements CommandLineRunner {
 
                         System.out.println("TTL: " + redisTemplate.getExpire(key));
                         break;
+                    }
+
+                    case "del": {
+                        if (commandInfo.args.size() < 1) {
+                            System.out.println("usage: del KEY1 [KEY2] [KEY3]...");
+                            continue;
+                        }
+
+                        int count = 0;
+                        for (String key : commandInfo.args) {
+                            if (redisTemplate.delete(key)) {
+                                count++;
+                            }
+                        }
+
+                        System.out.printf("%d keys deleted\n", count);
+                        break;
+                    }
+
+                    case "set": {
+                        if (commandInfo.args.size() < 2 || commandInfo.args.size() == 3) {
+                            System.out.println("usage: set KEY VALUE [expiration EX seconds|PX milliseconds]");
+                            continue;
+                        }
+
+                        String key = commandInfo.args.get(0);
+                        String value = commandInfo.args.get(1);
+
+                        TimeUnit timeUnit = null;
+                        Long expireTime = null;
+                        if (commandInfo.args.size() >= 4) {
+                            String tuStr = commandInfo.args.get(2);
+
+                            if (tuStr.equals("EX") || tuStr.equals("ex")) {
+                                timeUnit = TimeUnit.SECONDS;
+                            } else if (tuStr.equals("PX") || tuStr.equals("px")) {
+                                timeUnit = TimeUnit.MILLISECONDS;
+                            } else {
+                                System.out.println("usage: set KEY VALUE [expiration EX seconds|PX milliseconds]");
+                                continue;
+                            }
+
+                            expireTime = Long.parseLong(commandInfo.args.get(3));
+                        }
+
+                        if (timeUnit != null && expireTime != null) {
+                            redisTemplate.opsForValue().set(key, value, expireTime, timeUnit);
+                        }else{
+                            redisTemplate.opsForValue().set(key, value);
+                        }
+
+                        System.out.println("'OK'");
+
+                        break;
+                    }
+
+                    case "hset": {
+                        if (commandInfo.args.size() < 3) {
+                            System.out.println("usage: hset KEY HKEY VALUE");
+                            continue;
+                        }
+
+                        String key = commandInfo.args.get(0);
+                        String hkey = commandInfo.args.get(1);
+                        String value = commandInfo.args.get(2);
+
+                        int result;
+                        if (redisTemplate.opsForHash().hasKey(key, hkey)) {
+                            result = 0;
+                        }else{
+                            result = 1;
+                        }
+
+                        redisTemplate.opsForHash().put(key, hkey, value);
+
+                        System.out.printf("RESULT: %d\n", result);
+                        break;
+                    }
+
+                    case "expire": {
+                        if (commandInfo.args.size() < 2) {
+                            System.out.println("usage: expire KEY SECONDS");
+                            continue;
+                        }
+
+                        String key = commandInfo.args.get(0);
+                        Long timeout = Long.parseLong(commandInfo.args.get(1));
+
+
+                        int result;
+                        if (redisTemplate.hasKey(key)) {
+                            result = 1;
+                            redisTemplate.expire(key, timeout, TimeUnit.SECONDS);
+                        }else{
+                            result = 0;
+                        }
+
+                        System.out.printf("RESULT: %d\n", result);
+                        break;
+
                     }
 
                     default:
