@@ -154,7 +154,7 @@ public class RediscmdApplication implements CommandLineRunner {
 
                     case "hget": {
                         if (commandInfo.args.size() < 2) {
-                            System.out.println("usage: hgetall KEY HKEY");
+                            System.out.println("usage: hgetall KEY FIELD");
                             continue;
                         }
 
@@ -195,6 +195,25 @@ public class RediscmdApplication implements CommandLineRunner {
                         break;
                     }
 
+                    case "hdel": {
+                        if (commandInfo.args.size() < 1) {
+                            System.out.println("usage: hdel KEY [FIELD1] [FIELD2]...");
+                            continue;
+                        }
+
+                        String key = commandInfo.args.get(0);
+
+                        int count = 0;
+                        for (int i = 1; i < commandInfo.args.size(); i++) {
+                            String hkey = commandInfo.args.get(i);
+
+                            count += redisTemplate.opsForHash().delete(key, hkey);
+                        }
+
+                        System.out.printf("%d fields deleted\n", count);
+                        break;
+                    }
+
                     case "set": {
                         if (commandInfo.args.size() < 2 || commandInfo.args.size() == 3) {
                             System.out.println("usage: set KEY VALUE [expiration EX seconds|PX milliseconds]");
@@ -223,7 +242,7 @@ public class RediscmdApplication implements CommandLineRunner {
 
                         if (timeUnit != null && expireTime != null) {
                             redisTemplate.opsForValue().set(key, value, expireTime, timeUnit);
-                        }else{
+                        } else {
                             redisTemplate.opsForValue().set(key, value);
                         }
 
@@ -234,7 +253,7 @@ public class RediscmdApplication implements CommandLineRunner {
 
                     case "hset": {
                         if (commandInfo.args.size() < 3) {
-                            System.out.println("usage: hset KEY HKEY VALUE");
+                            System.out.println("usage: hset KEY FIELD VALUE");
                             continue;
                         }
 
@@ -245,7 +264,7 @@ public class RediscmdApplication implements CommandLineRunner {
                         int result;
                         if (redisTemplate.opsForHash().hasKey(key, hkey)) {
                             result = 0;
-                        }else{
+                        } else {
                             result = 1;
                         }
 
@@ -269,7 +288,7 @@ public class RediscmdApplication implements CommandLineRunner {
                         if (redisTemplate.hasKey(key)) {
                             result = 1;
                             redisTemplate.expire(key, timeout, TimeUnit.SECONDS);
-                        }else{
+                        } else {
                             result = 0;
                         }
 
