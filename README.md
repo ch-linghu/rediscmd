@@ -5,7 +5,7 @@
 ## 编译
 
 ```
-mvn -Dmaven.skip.test=true install
+mvn -Dmaven.test.skip=true install
 ```
 
 编译完成后，`target/rediscmd.jar`就是我们需要的目标，可以将其复制到单独目录备用。
